@@ -17,7 +17,7 @@ use std::time::Instant;
 use framebuffer::Framebuffer;
 use obj::load_obj;
 use raylib::prelude::*;
-use render::{fit_to_screen, render_obj, to_screen};
+use render::{fit_to_screen, render_obj};
 use primitive::primitive_assembly;
 use rasterizer::rasterize;
 use shaders::{fragment_shader, vertex_shader};
@@ -104,28 +104,58 @@ fn render_single_model(obj_path: &str, output_file: &str) {
 
 fn show_model_in_window(obj_path: &str) {
     let obj = load_obj(obj_path).expect("No se pudo cargar el modelo OBJ");
-    let (scale, offset) = fit_to_screen(&obj, 800, 600, 0.1);
-    let uniforms = Uniforms { model_matrix: Matrix::identity() };
+    let (scale, _) = fit_to_screen(&obj, 800, 600, 0.1);
     let mut framebuffer = Framebuffer::new(800, 600, Color::new(15, 18, 28, 255));
     framebuffer.clear();
     let vertex_array: Vec<vertex::Vertex> = obj.indices.iter().map(|&index| {
         let position = obj.vertices[index];
-        vertex::Vertex::new_with_color(
-            {
-                let screen = to_screen(position, scale, offset);
-                Vector3::new(screen.x, screen.y, position.z)
-            },
-            Vector3::new(1.0, 0.51, 0.16),
-        )
+        vertex::Vertex::new_with_color(position, Vector3::new(1.0, 0.72, 0.4))
     }).collect();
-    render(&mut framebuffer, &uniforms, &vertex_array);
-
     let (mut window, thread) = raylib::init()
         .size(800, 600)
         .title("Modelo OBJ - Renderer por software")
         .build();
     window.set_target_fps(60);
+    let mut yaw = 0.0_f32;
+    let mut pitch = 0.0_f32;
+    let (min, max) = obj.bounds();
+    let model_center = Vector3::new(
+        (min.x + max.x) * 0.5,
+        (min.y + max.y) * 0.5,
+        (min.z + max.z) * 0.5,
+    );
     while !window.window_should_close() {
+        if window.is_key_down(KeyboardKey::KEY_LEFT) {
+            yaw -= 0.03;
+        }
+        if window.is_key_down(KeyboardKey::KEY_RIGHT) {
+            yaw += 0.03;
+        }
+        if window.is_key_down(KeyboardKey::KEY_UP) {
+            pitch -= 0.03;
+        }
+        if window.is_key_down(KeyboardKey::KEY_DOWN) {
+            pitch += 0.03;
+        }
+
+        // Conservamos la geometría 3D y la proyectamos después de rotarla.
+        // La traslación se calcula explícitamente para coincidir con la
+        // multiplicación Matrix × Vector4 usada por el vertex shader.
+        let linear = Matrix::rotate_y(yaw)
+            * Matrix::rotate_x(pitch)
+            * Matrix::scale(scale, -scale, scale);
+        let transformed_center = Vector3::new(
+            linear.m0 * model_center.x + linear.m4 * model_center.y + linear.m8 * model_center.z,
+            linear.m1 * model_center.x + linear.m5 * model_center.y + linear.m9 * model_center.z,
+            linear.m2 * model_center.x + linear.m6 * model_center.y + linear.m10 * model_center.z,
+        );
+        let mut model_matrix = linear;
+        model_matrix.m12 = 400.0 - transformed_center.x;
+        model_matrix.m13 = 300.0 - transformed_center.y;
+        model_matrix.m14 = -transformed_center.z;
+        let uniforms = Uniforms { model_matrix };
+        framebuffer.clear();
+        render(&mut framebuffer, &uniforms, &vertex_array);
         framebuffer.draw_in_window(&mut window, &thread);
     }
 }
