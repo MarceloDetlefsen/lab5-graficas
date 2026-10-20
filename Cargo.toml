@@ -7,5 +7,8 @@ edition = "2024"
 opt-level = 3
 debug = false
 
+[profile.release]
+debug = true
+
 [dependencies]
 raylib = { version = "6.0.0", features = ["SUPPORT_IMAGE_GENERATION"] }
