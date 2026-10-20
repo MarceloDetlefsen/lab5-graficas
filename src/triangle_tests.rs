@@ -129,6 +129,8 @@ fn diagnostico_diferencias_nave_y_overdraw() {
     let triangles = build_triangles(&obj, &uniforms);
     let mut differing_triangles = 0;
     let mut differing_pixels = 0;
+    let mut scanline_only = 0;
+    let mut barycentric_only = 0;
     let mut max_edge_distance = 0.0_f32;
 
     for tri in &triangles {
@@ -138,6 +140,8 @@ fn diagnostico_diferencias_nave_y_overdraw() {
         if !differences.is_empty() {
             differing_triangles += 1;
             differing_pixels += differences.len();
+            scanline_only += scan.difference(&bary).count();
+            barycentric_only += bary.difference(&scan).count();
             let points = [
                 (tri[0].transformed_position.x, tri[0].transformed_position.y),
                 (tri[1].transformed_position.x, tri[1].transformed_position.y),
@@ -171,6 +175,6 @@ fn diagnostico_diferencias_nave_y_overdraw() {
         }
     }
 
-    println!("Diagnóstico nave: triángulos distintos = {differing_triangles}, píxeles distintos acumulados = {differing_pixels}, distancia máxima a arista = {max_edge_distance:.8}, píxeles distintos en framebuffer final = {framebuffer_differences}");
+    println!("Diagnóstico nave: triángulos distintos = {differing_triangles}, píxeles distintos acumulados = {differing_pixels}, solo scanline = {scanline_only}, solo baricéntrico = {barycentric_only}, distancia máxima a arista = {max_edge_distance:.8}, píxeles distintos en framebuffer final = {framebuffer_differences}");
     assert!(max_edge_distance < 1e-3, "La diferencia no está cerca de una arista");
 }
