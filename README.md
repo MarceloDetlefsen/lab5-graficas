@@ -154,10 +154,11 @@ En general, baricéntrico paga un costo por cada píxel del bounding box, mientr
 
 ## Flamegraph
 
-No se ejecutó `perf` ni se inspeccionó un SVG en este entorno. Para generarlos en Linux:
+Los flamegraphs fueron generados en Arch Linux con `perf` y el binario release con símbolos de depuración:
 
 ```bash
 cargo install flamegraph
+sudo pacman -S perf
 sudo sysctl kernel.perf_event_paranoid=1
 cargo flamegraph -o images/flamegraph_barycentric.svg -- --benchmark-triangles barycentric
 cargo flamegraph -o images/flamegraph_scanline.svg -- --benchmark-triangles scanline
@@ -165,12 +166,15 @@ cargo flamegraph -o images/flamegraph_scanline.svg -- --benchmark-triangles scan
 
 Si `perf` ya tiene permisos suficientes, no hace falta utilizar `sudo`.
 
-```text
-TODO(Marcelo): describir qué funciones ocupan más ancho.
-- ¿Predominan los cálculos geométricos?
-- ¿Predomina la creación de Fragment?
-- ¿Predomina el crecimiento del Vec?
-```
+![Flamegraph baricéntrico](images/flamegraph_barycentric.svg)
+
+![Flamegraph scanline](images/flamegraph_scanline.svg)
+
+En el flamegraph baricéntrico, `triangle_barycentric` representa aproximadamente el **50.04%** de las muestras. También aparecen `rasterize` con **22.81%**, `append_elements<Fragment>` con **22.76%**, `push<Fragment>` con **14.71%** y `write<Fragment>` con **10.52%**. Esto muestra que el cálculo geométrico por píxel es importante, pero también lo son la creación y copia de fragmentos.
+
+En scanline, el SVG muestra `push<Fragment>` con **35.66%**, `append_elements<Fragment>` con **29.24%** y `realloc_nonnull` con **0.80%**. El perfil confirma que el crecimiento y almacenamiento del `Vec<Fragment>` ocupan una parte importante del tiempo observado. También se identifica `grow_one<Fragment>`, aunque con porcentajes menores.
+
+La lectura debe hacerse con cuidado: los porcentajes del flamegraph son muestras de los stacks y algunas funciones aparecen en varias ramas. Aun así, ambos perfiles respaldan la comparación conceptual: baricéntrico paga trabajo geométrico por píxel del bounding box, mientras scanline reduce parte del cálculo a intersecciones por fila, pero ambos terminan generando y almacenando muchos `Fragment`.
 
 ## Estructura del proyecto
 
@@ -184,10 +188,12 @@ TODO(Marcelo): describir qué funciones ocupan más ancho.
 │   ├── Nave_X_Y.obj    # Modelo principal de la nave
 │   └── cube.obj        # Modelo 3D básico de prueba
 ├── images/
-│   ├── mode_wireframe.png      # Render wireframe
-│   ├── mode_barycentric.png    # Relleno baricéntrico
-│   ├── mode_scanline.png       # Relleno scanline
-│   └── mode_diff.png           # Diferencias entre rellenos
+│   ├── mode_wireframe.png         # Render wireframe
+│   ├── mode_barycentric.png       # Relleno baricéntrico
+│   ├── mode_scanline.png          # Relleno scanline
+│   ├── mode_diff.png              # Diferencias entre rellenos
+│   ├── flamegraph_barycentric.svg # Perfil del algoritmo baricéntrico
+│   └── flamegraph_scanline.svg    # Perfil del algoritmo scanline
 └── src/
     ├── main.rs         # Punto de entrada, ventana y pipeline
     ├── framebuffer.rs  # Búfer de píxeles, set_pixel y exportación
