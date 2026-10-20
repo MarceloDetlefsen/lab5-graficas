@@ -3,6 +3,8 @@ mod fragment;
 mod line;
 mod obj;
 mod render;
+mod triangle;
+mod vertex;
 
 use std::env;
 use std::path::Path;
@@ -12,10 +14,33 @@ use std::time::Instant;
 use framebuffer::Framebuffer;
 use obj::load_obj;
 use raylib::prelude::*;
-use render::{fit_to_screen, render_obj};
+use render::{fit_to_screen, render_obj, to_screen};
 
 pub struct Uniforms {
     pub model_matrix: Matrix,
+}
+
+pub fn render(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertex_array: &[vertex::Vertex]) {
+    // 1. Procesamiento de vértices.
+    let mut processed = Vec::with_capacity(vertex_array.len());
+    for vertex in vertex_array {
+        let mut vertex = vertex::Vertex::new_with_color(vertex.position, vertex.color);
+        vertex.transformed_position = vertex.position.transform(uniforms.model_matrix);
+        processed.push(vertex);
+    }
+
+    // 2. Ensamblaje de primitivas, 3. rasterización y 4. procesamiento de fragmentos.
+    for vertices in processed.chunks_exact(3) {
+        for fragment in triangle::triangle(&vertices[0], &vertices[1], &vertices[2]) {
+            let color = Color::new(
+                (fragment.color.x.clamp(0.0, 1.0) * 255.0) as u8,
+                (fragment.color.y.clamp(0.0, 1.0) * 255.0) as u8,
+                (fragment.color.z.clamp(0.0, 1.0) * 255.0) as u8,
+                255,
+            );
+            framebuffer.set_pixel(fragment.position.x as i32, fragment.position.y as i32, color);
+        }
+    }
 }
 
 fn render_single_model(obj_path: &str, output_file: &str) {
@@ -74,7 +99,17 @@ fn show_model_in_window(obj_path: &str) {
     let uniforms = Uniforms { model_matrix: Matrix::identity() };
     let mut framebuffer = Framebuffer::new(800, 600, Color::new(15, 18, 28, 255));
     framebuffer.clear();
-    render_obj(&mut framebuffer, &uniforms, &obj, scale, offset);
+    let vertex_array: Vec<vertex::Vertex> = obj.indices.iter().map(|&index| {
+        let position = obj.vertices[index];
+        vertex::Vertex::new_with_color(
+            {
+                let screen = to_screen(position, scale, offset);
+                Vector3::new(screen.x, screen.y, position.z)
+            },
+            Vector3::new(1.0, 1.0, 1.0),
+        )
+    }).collect();
+    render(&mut framebuffer, &uniforms, &vertex_array);
 
     let (mut window, thread) = raylib::init()
         .size(800, 600)
