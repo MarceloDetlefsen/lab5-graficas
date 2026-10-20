@@ -63,6 +63,14 @@ impl Framebuffer {
         }
     }
 
+    pub fn draw_in_window(&self, window: &mut RaylibHandle, thread: &RaylibThread) {
+        if let Ok(texture) = window.load_texture_from_image(thread, &self.color_buffer) {
+            let mut drawing = window.begin_drawing(thread);
+            drawing.clear_background(Color::BLACK);
+            drawing.draw_texture(&texture, 0, 0, Color::WHITE);
+        }
+    }
+
     fn render_to_bmp_file(&self, filename: &str) {
         let width = self.width as usize;
         let height = self.height as usize;

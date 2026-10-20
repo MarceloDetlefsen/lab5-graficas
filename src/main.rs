@@ -68,6 +68,24 @@ fn render_single_model(obj_path: &str, output_file: &str) {
     println!("Imagen exportada exitosamente a '{}'\n", output_file);
 }
 
+fn show_model_in_window(obj_path: &str) {
+    let obj = load_obj(obj_path).expect("No se pudo cargar el modelo OBJ");
+    let (scale, offset) = fit_to_screen(&obj, 800, 600, 0.1);
+    let uniforms = Uniforms { model_matrix: Matrix::identity() };
+    let mut framebuffer = Framebuffer::new(800, 600, Color::new(15, 18, 28, 255));
+    framebuffer.clear();
+    render_obj(&mut framebuffer, &uniforms, &obj, scale, offset);
+
+    let (mut window, thread) = raylib::init()
+        .size(800, 600)
+        .title("Modelo OBJ - Renderer por software")
+        .build();
+    window.set_target_fps(60);
+    while !window.window_should_close() {
+        framebuffer.draw_in_window(&mut window, &thread);
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
@@ -81,32 +99,6 @@ fn main() {
         };
         render_single_model(obj_path, output_file);
     } else {
-        // Modo por defecto: Renderizar las 6 variantes de planos de la nave
-        let default_targets = [
-            ("assets/Nave_X_Y.obj", "images/render_X_Y.png"),
-            ("assets/Nave_-X_Y.obj", "images/render_-X_Y.png"),
-            ("assets/Nave_Z_Y.obj", "images/render_Z_Y.png"),
-            ("assets/Nave_-Z_Y.obj", "images/render_-Z_Y.png"),
-            ("assets/Nave_X_Z.obj", "images/render_X_Z.png"),
-            ("assets/Nave_X_-Z.obj", "images/render_X_-Z.png"),
-        ];
-
-        let mut rendered_any = false;
-        for (obj_path, out_img) in &default_targets {
-            if Path::new(obj_path).exists() {
-                render_single_model(obj_path, out_img);
-                rendered_any = true;
-            }
-        }
-
-        // Si existe images/render_X_Y.png, guardamos también como images/render.png por compatibilidad
-        if Path::new("images/render_X_Y.png").exists() {
-            let _ = std::fs::copy("images/render_X_Y.png", "images/render.png");
-        }
-
-        if !rendered_any {
-            eprintln!("No se encontraron modelos en assets/ para renderizar.");
-            process::exit(1);
-        }
+        show_model_in_window("assets/Nave_X_Y.obj");
     }
 }
