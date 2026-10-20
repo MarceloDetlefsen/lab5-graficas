@@ -2,6 +2,8 @@
 
 Implementación de un renderer por software desarrollado desde cero en Rust con `raylib`. El proyecto carga modelos Wavefront `.obj`, procesa sus vértices mediante uniforms y shaders, ensambla triángulos y los rasteriza como fragmentos sobre un framebuffer propio.
 
+Este Laboratorio 5 es la continuación del trabajo desarrollado en el Laboratorio 4. El repositorio de la etapa anterior puede consultarse aquí: [Lab 4: lab4-graficas](https://github.com/MarceloDetlefsen/lab4-graficas.git).
+
 ![Nave renderizada](images/mode_wireframe.png)
 
 ## Cómo correr el proyecto
