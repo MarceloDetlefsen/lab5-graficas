@@ -36,6 +36,8 @@ pub fn triangle_wireframe(a: &Vertex, b: &Vertex, c: &Vertex) -> Vec<Fragment> {
 /// únicamente el intervalo mínimo-máximo evita duplicar píxeles cuando un
 /// vértice pertenece a dos aristas.
 pub fn triangle_scanline(a: &Vertex, b: &Vertex, c: &Vertex) -> Vec<Fragment> {
+    // La interpolación de x puede redondear distinto a la función de arista
+    // baricéntrica cuando el centro cae casi exactamente sobre un borde.
     if is_degenerate(a, b, c) {
         return Vec::new();
     }
@@ -94,6 +96,8 @@ pub fn triangle_scanline(a: &Vertex, b: &Vertex, c: &Vertex) -> Vec<Fragment> {
 }
 
 pub fn triangle_barycentric(a: &Vertex, b: &Vertex, c: &Vertex) -> Vec<Fragment> {
+    // La función de arista puede redondear distinto a la interpolación de x
+    // de scanline cuando el centro cae casi exactamente sobre un borde.
     if is_degenerate(a, b, c) {
         return Vec::new();
     }

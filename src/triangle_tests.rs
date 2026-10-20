@@ -2,9 +2,15 @@ use std::collections::HashSet;
 
 use raylib::prelude::Vector3;
 
+use crate::framebuffer::Framebuffer;
 use crate::fragment::Fragment;
+use crate::obj::load_obj;
+use crate::rasterizer::{TriangleMode, VIEWPORT_HEIGHT, VIEWPORT_WIDTH};
+use crate::render::fit_to_screen;
+use crate::scene::{build_model_matrix, build_triangles};
 use crate::triangle::{triangle_barycentric, triangle_scanline};
 use crate::vertex::Vertex;
+use crate::{render, Uniforms};
 
 fn v(x: f32, y: f32) -> Vertex {
     let mut vertex = Vertex::new_with_color(Vector3::new(x, y, 0.0), Vector3::new(1.0, 1.0, 1.0));
@@ -113,4 +119,58 @@ fn aleatoria_lcg_solo_tolera_diferencias_de_borde() {
         }
     }
     println!("Diferencias de borde: {border_differences} de {total_differences}");
+}
+
+#[test]
+fn diagnostico_diferencias_nave_y_overdraw() {
+    let obj = load_obj("assets/Nave_X_Y.obj").unwrap();
+    let (scale, _) = fit_to_screen(&obj, VIEWPORT_WIDTH as u32, VIEWPORT_HEIGHT as u32, 0.1);
+    let uniforms = Uniforms { model_matrix: build_model_matrix(&obj, scale, 0.6, 0.3, 1.0) };
+    let triangles = build_triangles(&obj, &uniforms);
+    let mut differing_triangles = 0;
+    let mut differing_pixels = 0;
+    let mut max_edge_distance = 0.0_f32;
+
+    for tri in &triangles {
+        let bary = pixels(&triangle_barycentric(&tri[0], &tri[1], &tri[2]));
+        let scan = pixels(&triangle_scanline(&tri[0], &tri[1], &tri[2]));
+        let differences: Vec<_> = bary.symmetric_difference(&scan).copied().collect();
+        if !differences.is_empty() {
+            differing_triangles += 1;
+            differing_pixels += differences.len();
+            let points = [
+                (tri[0].transformed_position.x, tri[0].transformed_position.y),
+                (tri[1].transformed_position.x, tri[1].transformed_position.y),
+                (tri[2].transformed_position.x, tri[2].transformed_position.y),
+            ];
+            for (x, y) in differences {
+                max_edge_distance = max_edge_distance.max(
+                    [(points[0], points[1]), (points[1], points[2]), (points[2], points[0])]
+                        .into_iter()
+                        .map(|((ax, ay), (bx, by))| distance_to_segment(x as f32 + 0.5, y as f32 + 0.5, ax, ay, bx, by))
+                        .fold(f32::INFINITY, f32::min),
+                );
+            }
+        }
+    }
+
+    let vertices: Vec<Vertex> = triangles.iter().flat_map(|tri| tri.iter().cloned()).collect();
+    let identity = Uniforms { model_matrix: raylib::prelude::Matrix::identity() };
+    let mut bary_frame = Framebuffer::new(VIEWPORT_WIDTH as u32, VIEWPORT_HEIGHT as u32, raylib::prelude::Color::new(15, 18, 28, 255));
+    let mut scan_frame = Framebuffer::new(VIEWPORT_WIDTH as u32, VIEWPORT_HEIGHT as u32, raylib::prelude::Color::new(15, 18, 28, 255));
+    bary_frame.clear();
+    scan_frame.clear();
+    render(&mut bary_frame, &identity, &vertices, TriangleMode::FilledBarycentric);
+    render(&mut scan_frame, &identity, &vertices, TriangleMode::FilledScanline);
+    let mut framebuffer_differences = 0;
+    for y in 0..VIEWPORT_HEIGHT {
+        for x in 0..VIEWPORT_WIDTH {
+            if bary_frame.pixel_color(x, y) != scan_frame.pixel_color(x, y) {
+                framebuffer_differences += 1;
+            }
+        }
+    }
+
+    println!("Diagnóstico nave: triángulos distintos = {differing_triangles}, píxeles distintos acumulados = {differing_pixels}, distancia máxima a arista = {max_edge_distance:.8}, píxeles distintos en framebuffer final = {framebuffer_differences}");
+    assert!(max_edge_distance < 1e-3, "La diferencia no está cerca de una arista");
 }
