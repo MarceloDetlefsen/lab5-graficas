@@ -1,7 +1,7 @@
 use crate::fragment::Fragment;
 use crate::vertex::Vertex;
 
-pub fn triangle(a: &Vertex, b: &Vertex, c: &Vertex) -> Vec<Fragment> {
+pub fn triangle_wireframe(a: &Vertex, b: &Vertex, c: &Vertex) -> Vec<Fragment> {
     let mut fragments = Vec::new();
     for (start, end) in [(a, b), (b, c), (c, a)] {
         let dx = end.transformed_position.x - start.transformed_position.x;
@@ -15,4 +15,14 @@ pub fn triangle(a: &Vertex, b: &Vertex, c: &Vertex) -> Vec<Fragment> {
         }
     }
     fragments
+}
+
+pub fn triangle_barycentric(_a: &Vertex, _b: &Vertex, _c: &Vertex) -> Vec<Fragment> {
+    // TODO: Implementar el relleno baricéntrico.
+    Vec::new()
+}
+
+pub fn triangle_scanline(_a: &Vertex, _b: &Vertex, _c: &Vertex) -> Vec<Fragment> {
+    // TODO: Implementar el relleno por scanline.
+    Vec::new()
 }
