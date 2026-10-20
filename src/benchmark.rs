@@ -11,7 +11,8 @@ use crate::Uniforms;
 
 const REPEATS: usize = 11;
 const NAVE_ITERS: usize = 20;
-const GRANDES_ITERS: usize = 2000;
+const GRANDES_ITERS: usize = 100;
+const THIN_ITERS: usize = 2000;
 
 fn mode_name(mode: TriangleMode) -> &'static str {
     match mode {
@@ -38,6 +39,23 @@ fn large_triangles() -> Vec<[Vertex; 3]> {
             Vector3::new(1.0, 0.72, 0.4),
         ))
     }).to_vec()
+}
+
+fn thin_triangles() -> Vec<[Vertex; 3]> {
+    let data = [
+        [(-20.0, 0.0), (820.0, 600.0), (820.0, 596.0)],
+        [(-20.0, 600.0), (820.0, 0.0), (820.0, 4.0)],
+        [(0.0, -20.0), (800.0, 620.0), (796.0, 620.0)],
+        [(0.0, 620.0), (800.0, -20.0), (804.0, -20.0)],
+        [(-20.0, 200.0), (820.0, 204.0), (820.0, 208.0)],
+        [(-20.0, 400.0), (820.0, 396.0), (820.0, 392.0)],
+        [(200.0, -20.0), (204.0, 620.0), (208.0, 620.0)],
+        [(600.0, -20.0), (596.0, 620.0), (592.0, 620.0)],
+    ];
+    data.map(|triangle| triangle.map(|(x, y)| Vertex::new_with_color(
+        Vector3::new(x, y, 0.0),
+        Vector3::new(1.0, 0.72, 0.4),
+    ))).to_vec()
 }
 
 fn median(values: &mut [u128]) -> u128 {
@@ -85,11 +103,13 @@ pub fn run(selected: Option<TriangleMode>) {
     let uniforms = Uniforms { model_matrix: build_model_matrix(&obj, scale, 0.6, 0.3, 1.0) };
     let nave = build_triangles(&obj, &uniforms);
     let grandes = large_triangles();
+    let delgados = thin_triangles();
 
     println!("\n| Conjunto | Modo | Fragmentos | Mediana por ejecución | Mín | Máx |");
     println!("|---|---|---:|---:|---:|---:|");
     benchmark_set("nave", &nave, NAVE_ITERS, &modes);
     benchmark_set("grandes", &grandes, GRANDES_ITERS, &modes);
+    benchmark_set("delgados", &delgados, THIN_ITERS, &modes);
 }
 
 pub fn parse_mode(argument: Option<&str>) -> Option<TriangleMode> {
