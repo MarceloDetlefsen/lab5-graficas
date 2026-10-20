@@ -118,6 +118,9 @@ fn show_model_in_window(obj_path: &str) {
     window.set_target_fps(60);
     let mut yaw = 0.0_f32;
     let mut pitch = 0.0_f32;
+    let mut zoom = 1.0_f32;
+    let mut auto_yaw = false;
+    let mut auto_pitch = false;
     let (min, max) = obj.bounds();
     let model_center = Vector3::new(
         (min.x + max.x) * 0.5,
@@ -125,6 +128,23 @@ fn show_model_in_window(obj_path: &str) {
         (min.z + max.z) * 0.5,
     );
     while !window.window_should_close() {
+        let wheel = window.get_mouse_wheel_move();
+        zoom = (zoom + wheel * 0.1).clamp(0.2, 4.0);
+
+        if window.is_key_pressed(KeyboardKey::KEY_R) {
+            yaw = 0.0;
+            pitch = 0.0;
+            zoom = 1.0;
+            auto_yaw = false;
+            auto_pitch = false;
+        }
+        if window.is_key_pressed(KeyboardKey::KEY_ONE) {
+            auto_yaw = !auto_yaw;
+        }
+        if window.is_key_pressed(KeyboardKey::KEY_TWO) {
+            auto_pitch = !auto_pitch;
+        }
+
         if window.is_key_down(KeyboardKey::KEY_LEFT) {
             yaw -= 0.03;
         }
@@ -137,13 +157,19 @@ fn show_model_in_window(obj_path: &str) {
         if window.is_key_down(KeyboardKey::KEY_DOWN) {
             pitch += 0.03;
         }
+        if auto_yaw {
+            yaw += 0.03;
+        }
+        if auto_pitch {
+            pitch += 0.03;
+        }
 
         // Conservamos la geometría 3D y la proyectamos después de rotarla.
         // La traslación se calcula explícitamente para coincidir con la
         // multiplicación Matrix × Vector4 usada por el vertex shader.
         let linear = Matrix::rotate_y(yaw)
             * Matrix::rotate_x(pitch)
-            * Matrix::scale(scale, -scale, scale);
+            * Matrix::scale(scale * zoom, -scale * zoom, scale * zoom);
         let transformed_center = Vector3::new(
             linear.m0 * model_center.x + linear.m4 * model_center.y + linear.m8 * model_center.z,
             linear.m1 * model_center.x + linear.m5 * model_center.y + linear.m9 * model_center.z,
