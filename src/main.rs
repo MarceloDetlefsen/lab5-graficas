@@ -19,14 +19,14 @@ use obj::load_obj;
 use raylib::prelude::*;
 use render::{fit_to_screen, render_obj};
 use primitive::primitive_assembly;
-use rasterizer::rasterize;
+use rasterizer::{rasterize, TriangleMode, VIEWPORT_HEIGHT, VIEWPORT_WIDTH};
 use shaders::{fragment_shader, vertex_shader};
 
 pub struct Uniforms {
     pub model_matrix: Matrix,
 }
 
-pub fn render(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertex_array: &[vertex::Vertex]) {
+pub fn render(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertex_array: &[vertex::Vertex], mode: TriangleMode) {
     // 1. Procesamiento de vértices.
     let transformed_vertices: Vec<vertex::Vertex> = vertex_array
         .iter()
@@ -37,7 +37,7 @@ pub fn render(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertex_array: 
     let triangles = primitive_assembly(&transformed_vertices);
 
     // 3. Rasterización.
-    let fragments = rasterize(&triangles);
+    let fragments = rasterize(&triangles, mode);
 
     // 4. Procesamiento de fragmentos.
     for fragment in fragments {
@@ -104,18 +104,19 @@ fn render_single_model(obj_path: &str, output_file: &str) {
 
 fn show_model_in_window(obj_path: &str) {
     let obj = load_obj(obj_path).expect("No se pudo cargar el modelo OBJ");
-    let (scale, _) = fit_to_screen(&obj, 800, 600, 0.1);
-    let mut framebuffer = Framebuffer::new(800, 600, Color::new(15, 18, 28, 255));
+    let (scale, _) = fit_to_screen(&obj, VIEWPORT_WIDTH as u32, VIEWPORT_HEIGHT as u32, 0.1);
+    let mut framebuffer = Framebuffer::new(VIEWPORT_WIDTH as u32, VIEWPORT_HEIGHT as u32, Color::new(15, 18, 28, 255));
     framebuffer.clear();
     let vertex_array: Vec<vertex::Vertex> = obj.indices.iter().map(|&index| {
         let position = obj.vertices[index];
         vertex::Vertex::new_with_color(position, Vector3::new(1.0, 0.72, 0.4))
     }).collect();
     let (mut window, thread) = raylib::init()
-        .size(800, 600)
+        .size(VIEWPORT_WIDTH, VIEWPORT_HEIGHT)
         .title("Modelo OBJ - Renderer por software")
         .build();
     window.set_target_fps(60);
+    let mut mode = TriangleMode::Wireframe;
     let mut yaw = 0.0_f32;
     let mut pitch = 0.0_f32;
     let mut zoom = 1.0_f32;
@@ -128,6 +129,18 @@ fn show_model_in_window(obj_path: &str) {
         (min.z + max.z) * 0.5,
     );
     while !window.window_should_close() {
+        if window.is_key_pressed(KeyboardKey::KEY_W) {
+            mode = TriangleMode::Wireframe;
+            println!("Modo activo: {:?}", mode);
+        }
+        if window.is_key_pressed(KeyboardKey::KEY_B) {
+            mode = TriangleMode::FilledBarycentric;
+            println!("Modo activo: {:?}", mode);
+        }
+        if window.is_key_pressed(KeyboardKey::KEY_S) {
+            mode = TriangleMode::FilledScanline;
+            println!("Modo activo: {:?}", mode);
+        }
         let wheel = window.get_mouse_wheel_move();
         zoom = (zoom + wheel * 0.1).clamp(0.2, 4.0);
 
@@ -176,12 +189,12 @@ fn show_model_in_window(obj_path: &str) {
             linear.m2 * model_center.x + linear.m6 * model_center.y + linear.m10 * model_center.z,
         );
         let mut model_matrix = linear;
-        model_matrix.m12 = 400.0 - transformed_center.x;
-        model_matrix.m13 = 300.0 - transformed_center.y;
+        model_matrix.m12 = VIEWPORT_WIDTH as f32 / 2.0 - transformed_center.x;
+        model_matrix.m13 = VIEWPORT_HEIGHT as f32 / 2.0 - transformed_center.y;
         model_matrix.m14 = -transformed_center.z;
         let uniforms = Uniforms { model_matrix };
         framebuffer.clear();
-        render(&mut framebuffer, &uniforms, &vertex_array);
+        render(&mut framebuffer, &uniforms, &vertex_array, mode);
         framebuffer.draw_in_window(&mut window, &thread);
     }
 }
