@@ -20,7 +20,7 @@ use raylib::prelude::*;
 use render::{fit_to_screen, render_obj, to_screen};
 use primitive::primitive_assembly;
 use rasterizer::rasterize;
-use shaders::vertex_shader;
+use shaders::{fragment_shader, vertex_shader};
 
 pub struct Uniforms {
     pub model_matrix: Matrix,
@@ -41,10 +41,11 @@ pub fn render(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertex_array: 
 
     // 4. Procesamiento de fragmentos.
     for fragment in fragments {
+        let fragment_color = fragment_shader(&fragment);
         let color = Color::new(
-            (fragment.color.x.clamp(0.0, 1.0) * 255.0) as u8,
-            (fragment.color.y.clamp(0.0, 1.0) * 255.0) as u8,
-            (fragment.color.z.clamp(0.0, 1.0) * 255.0) as u8,
+            (fragment_color.x.clamp(0.0, 1.0) * 255.0) as u8,
+            (fragment_color.y.clamp(0.0, 1.0) * 255.0) as u8,
+            (fragment_color.z.clamp(0.0, 1.0) * 255.0) as u8,
             255,
         );
         framebuffer.set_pixel(fragment.position.x as i32, fragment.position.y as i32, color);
