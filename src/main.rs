@@ -1,10 +1,12 @@
 mod framebuffer;
+mod benchmark;
 mod fragment;
 mod line;
 mod obj;
 mod primitive;
 mod rasterizer;
 mod render;
+mod scene;
 mod shaders;
 mod triangle;
 mod vertex;
@@ -23,6 +25,7 @@ use render::{fit_to_screen, render_obj};
 use primitive::primitive_assembly;
 use rasterizer::{rasterize, TriangleMode, VIEWPORT_HEIGHT, VIEWPORT_WIDTH};
 use shaders::{fragment_shader, vertex_shader};
+use scene::{build_model_matrix, build_triangles};
 
 pub struct Uniforms {
     pub model_matrix: Matrix,
@@ -109,10 +112,6 @@ fn show_model_in_window(obj_path: &str) {
     let (scale, _) = fit_to_screen(&obj, VIEWPORT_WIDTH as u32, VIEWPORT_HEIGHT as u32, 0.1);
     let mut framebuffer = Framebuffer::new(VIEWPORT_WIDTH as u32, VIEWPORT_HEIGHT as u32, Color::new(15, 18, 28, 255));
     framebuffer.clear();
-    let vertex_array: Vec<vertex::Vertex> = obj.indices.iter().map(|&index| {
-        let position = obj.vertices[index];
-        vertex::Vertex::new_with_color(position, Vector3::new(1.0, 0.72, 0.4))
-    }).collect();
     let (mut window, thread) = raylib::init()
         .size(VIEWPORT_WIDTH, VIEWPORT_HEIGHT)
         .title("Modelo OBJ - Renderer por software")
@@ -124,12 +123,6 @@ fn show_model_in_window(obj_path: &str) {
     let mut zoom = 1.0_f32;
     let mut auto_yaw = false;
     let mut auto_pitch = false;
-    let (min, max) = obj.bounds();
-    let model_center = Vector3::new(
-        (min.x + max.x) * 0.5,
-        (min.y + max.y) * 0.5,
-        (min.z + max.z) * 0.5,
-    );
     while !window.window_should_close() {
         if window.is_key_pressed(KeyboardKey::KEY_W) {
             mode = TriangleMode::Wireframe;
@@ -179,30 +172,23 @@ fn show_model_in_window(obj_path: &str) {
             pitch += 0.03;
         }
 
-        // Conservamos la geometría 3D y la proyectamos después de rotarla.
-        // La traslación se calcula explícitamente para coincidir con la
-        // multiplicación Matrix × Vector4 usada por el vertex shader.
-        let linear = Matrix::rotate_y(yaw)
-            * Matrix::rotate_x(pitch)
-            * Matrix::scale(scale * zoom, -scale * zoom, scale * zoom);
-        let transformed_center = Vector3::new(
-            linear.m0 * model_center.x + linear.m4 * model_center.y + linear.m8 * model_center.z,
-            linear.m1 * model_center.x + linear.m5 * model_center.y + linear.m9 * model_center.z,
-            linear.m2 * model_center.x + linear.m6 * model_center.y + linear.m10 * model_center.z,
-        );
-        let mut model_matrix = linear;
-        model_matrix.m12 = VIEWPORT_WIDTH as f32 / 2.0 - transformed_center.x;
-        model_matrix.m13 = VIEWPORT_HEIGHT as f32 / 2.0 - transformed_center.y;
-        model_matrix.m14 = -transformed_center.z;
+        let model_matrix = build_model_matrix(&obj, scale, yaw, pitch, zoom);
         let uniforms = Uniforms { model_matrix };
         framebuffer.clear();
-        render(&mut framebuffer, &uniforms, &vertex_array, mode);
+        let triangles = build_triangles(&obj, &uniforms);
+        let vertex_array: Vec<vertex::Vertex> = triangles.iter().flat_map(|tri| tri.iter().cloned()).collect();
+        render(&mut framebuffer, &Uniforms { model_matrix: Matrix::identity() }, &vertex_array, mode);
         framebuffer.draw_in_window(&mut window, &thread);
     }
 }
 
 fn main() {
     let args: Vec<String> = env::args().collect();
+
+    if args.get(1).map(String::as_str) == Some("--benchmark-triangles") {
+        benchmark::run(benchmark::parse_mode(args.get(2).map(String::as_str)));
+        return;
+    }
 
     if args.len() > 1 {
         // Modo archivo individual especificado por CLI
