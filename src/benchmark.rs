@@ -12,7 +12,9 @@ use crate::Uniforms;
 const REPEATS: usize = 11;
 const NAVE_ITERS: usize = 20;
 const GRANDES_ITERS: usize = 100;
-const THIN_ITERS: usize = 2000;
+// Los bounding boxes son grandes aunque el área sea pequeña; 10 iteraciones
+// mantienen medible el caso sin dejar el benchmark bloqueado durante horas.
+const THIN_ITERS: usize = 10;
 
 fn mode_name(mode: TriangleMode) -> &'static str {
     match mode {
