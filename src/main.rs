@@ -182,11 +182,56 @@ fn show_model_in_window(obj_path: &str) {
     }
 }
 
+fn export_modes(obj_path: &str) {
+    let obj = load_obj(obj_path).expect("No se pudo cargar el modelo para exportar");
+    let (scale, _) = fit_to_screen(&obj, VIEWPORT_WIDTH as u32, VIEWPORT_HEIGHT as u32, 0.1);
+    let uniforms = Uniforms { model_matrix: build_model_matrix(&obj, scale, 0.6, 0.3, 1.0) };
+    let triangles = build_triangles(&obj, &uniforms);
+    let identity = Uniforms { model_matrix: Matrix::identity() };
+    let modes = [
+        (TriangleMode::Wireframe, "images/mode_wireframe.png"),
+        (TriangleMode::FilledBarycentric, "images/mode_barycentric.png"),
+        (TriangleMode::FilledScanline, "images/mode_scanline.png"),
+    ];
+    let vertices: Vec<vertex::Vertex> = triangles.iter().flat_map(|tri| tri.iter().cloned()).collect();
+    let mut images = Vec::new();
+    for (mode, filename) in modes {
+        let fragments = rasterize(&triangles, mode);
+        println!("Modo {:?}: {} fragmentos", mode, fragments.len());
+        let mut framebuffer = Framebuffer::new(VIEWPORT_WIDTH as u32, VIEWPORT_HEIGHT as u32, Color::new(15, 18, 28, 255));
+        framebuffer.clear();
+        render(&mut framebuffer, &identity, &vertices, mode);
+        framebuffer.render_to_file(filename);
+        images.push(framebuffer);
+    }
+
+    let mut diff = Framebuffer::new(VIEWPORT_WIDTH as u32, VIEWPORT_HEIGHT as u32, Color::new(15, 18, 28, 255));
+    let mut differences = 0;
+    for y in 0..VIEWPORT_HEIGHT {
+        for x in 0..VIEWPORT_WIDTH {
+            if images[1].pixel_color(x, y) != images[2].pixel_color(x, y) {
+                diff.set_pixel(x, y, Color::RED);
+                differences += 1;
+            }
+        }
+    }
+    diff.render_to_file("images/mode_diff.png");
+    if differences == 0 {
+        println!("Sin diferencias");
+    } else {
+        println!("Diferencias entre barycentric y scanline: {differences} píxeles");
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.get(1).map(String::as_str) == Some("--benchmark-triangles") {
         benchmark::run(benchmark::parse_mode(args.get(2).map(String::as_str)));
+        return;
+    }
+    if args.get(1).map(String::as_str) == Some("--export-modes") {
+        export_modes("assets/Nave_X_Y.obj");
         return;
     }
 

@@ -41,6 +41,10 @@ impl Framebuffer {
         }
     }
 
+    pub fn pixel_color(&self, x: i32, y: i32) -> Color {
+        self.color_buffer.get_color(x, y)
+    }
+
     pub fn point(&mut self, point: Vector2) {
         let x = point.x.round() as i32;
         let y = point.y.round() as i32;
