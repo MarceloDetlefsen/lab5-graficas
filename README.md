@@ -1,64 +1,130 @@
-# Laboratorio 5: Rasterización de triángulos
+# Lab 5: Rasterización de triángulos
 
-Renderer por software en Rust 2024. Carga modelos OBJ manualmente, procesa vértices, ensambla triángulos, genera fragmentos y escribe en un framebuffer propio. Raylib se usa solo para tipos matemáticos, `Image` y la ventana.
+Implementación de un renderer por software desarrollado desde cero en Rust con `raylib`. El proyecto carga modelos Wavefront `.obj`, procesa sus vértices mediante uniforms y shaders, ensambla triángulos y los rasteriza como fragmentos sobre un framebuffer propio.
 
-Autor: **Marcelo Detlefsen** — Universidad del Valle de Guatemala, Gráficas por Computadora.
+![Nave renderizada](images/mode_wireframe.png)
 
-## Cómo ejecutar
+## Cómo correr el proyecto
+
+### Requisitos
+
+- **Rust + Cargo** (edición 2024 o versión moderna instalada).
+- Herramientas de compilación de C y CMake para `raylib-sys`.
+
+### Build y ejecución
+
+**Abrir el renderer interactivo:**
 
 ```bash
 cargo run --release
-cargo run --release -- assets/Nave_X_Y.obj images/salida.png
-cargo run --release -- --export-modes
-cargo run --release -- --benchmark-triangles
-cargo test
 ```
 
-La ventana usa un framebuffer de `800x600` y muestra `assets/Nave_X_Y.obj`.
+**Exportar un modelo individual:**
 
-Controles: flechas izquierda/derecha rotan horizontalmente; arriba/abajo rotan verticalmente; la rueda hace zoom; `1` y `2` activan rotación automática horizontal y vertical; `R` reinicia cámara, zoom y movimiento automático; `W`, `B` y `S` seleccionan wireframe, relleno baricéntrico y relleno scanline.
+```bash
+cargo run --release -- assets/Nave_X_Y.obj images/salida.png
+```
 
-## Pipeline
+**Exportar los tres modos y la imagen de diferencias:**
+
+```bash
+cargo run --release -- --export-modes
+```
+
+**Ejecutar el benchmark sin abrir ventana:**
+
+```bash
+cargo run --release -- --benchmark-triangles
+cargo run --release -- --benchmark-triangles barycentric
+cargo run --release -- --benchmark-triangles scanline
+```
+
+**Ejecutar las pruebas:**
+
+```bash
+cargo test
+cargo test -- --nocapture
+```
+
+La ventana utiliza un framebuffer fijo de `800x600`. Sus controles son:
+
+- Flechas izquierda/derecha: rotación horizontal.
+- Flechas arriba/abajo: rotación vertical.
+- Rueda del mouse: zoom.
+- `1` y `2`: rotación automática horizontal y vertical.
+- `R`: reiniciar cámara, zoom y movimiento automático.
+- `W`, `B` y `S`: wireframe, relleno baricéntrico y relleno scanline.
+
+## Descripción
+
+El proyecto implementa un pipeline gráfico completo por software, sin utilizar las funciones 3D automáticas de Raylib:
+
+- **Parser manual OBJ:** carga vértices (`v`) y caras (`f`), convirtiendo índices OBJ base 1 a índices Rust base 0.
+- **Uniforms y matriz de modelo:** todos los vértices de un dibujo comparten la misma matriz.
+- **Vertex shader:** transforma cada vértice usando una posición homogénea `Vector4`.
+- **Primitive assembly:** agrupa vértices consecutivos en triángulos de tres elementos.
+- **Rasterización:** genera fragmentos mediante wireframe, coordenadas baricéntricas o scanline.
+- **Fragment shader:** devuelve el color del fragmento sin modificarlo.
+- **Framebuffer propio:** escribe píxeles en una imagen de `800x600` y la presenta en la ventana o la exporta a PNG.
+
+### Preparación del modelo
+
+El modelo principal es `assets/Nave_X_Y.obj`, exportado como malla triangulada. También se conserva `assets/cube.obj` como modelo pequeño de prueba.
+
+---
+
+## Pipeline de Renderizado
 
 ```text
-OBJ → vertex shader → primitive assembly → rasterización → fragment shader → framebuffer
+Archivo .OBJ
+    ↓
+Parser manual (load_obj): vértices e índices
+    ↓
+Vertex shader: aplicación de uniforms.model_matrix
+    ↓
+Primitive assembly: grupos de tres vértices
+    ↓
+Rasterización: wireframe, baricéntrico o scanline
+    ↓
+Fragment shader: selección del color
+    ↓
+Framebuffer::set_pixel
+    ↓
+Ventana o exportación PNG
 ```
 
-El vertex shader aplica la matriz de modelo. `primitive_assembly` agrupa la secuencia en `Vec<[Vertex; 3]>`. El rasterizador despacha a wireframe, baricéntrico o scanline. El fragment shader es actualmente passthrough.
+### Regla común de rasterización
 
-## Algoritmos y regla de bordes
+El centro del píxel `(x, y)` se evalúa en `(x + 0.5, y + 0.5)`. La regla de borde es inclusiva: los centros sobre aristas y vértices pertenecen al triángulo. Las aristas horizontales incluyen ambos extremos para evitar huecos; el intervalo por fila evita duplicados. Los triángulos degenerados se descartan con `DEGENERATE_EPS = 1e-6` y los bounding boxes se recortan al framebuffer.
 
-Ambos algoritmos usan el centro del píxel `(x + 0.5, y + 0.5)`. La regla es inclusiva en `x`, `y` y en las aristas horizontales; incluir ambos extremos horizontales evita huecos, mientras que tomar un único intervalo por fila evita duplicados. Los triángulos degenerados se descartan con `DEGENERATE_EPS = 1e-6` y el bounding box se recorta al framebuffer.
+Una regla top-left aplicada de forma distinta puede causar duplicados entre triángulos adyacentes si ambos incluyen el borde, o huecos si ambos lo excluyen. En este laboratorio ambos algoritmos comparten la regla inclusiva.
 
-El algoritmo baricéntrico calcula tres funciones de arista por cada píxel del bounding box. Scanline calcula las intersecciones de cada fila y recorre el intervalo entre izquierda y derecha. Por ello, baricéntrico tiene costo por píxel del bounding box y scanline concentra el cálculo geométrico por fila. Los triángulos delgados o diagonales pueden hacer que el bounding box visite muchos píxeles descartados. Ambos crean `Fragment` y pueden hacer crecer el `Vec`.
+### Modos de rasterización
 
-Una regla top-left aplicada incorrectamente puede asignar un borde a ambos triángulos adyacentes y producir duplicados, o excluirlo de ambos y producir huecos. Este laboratorio usa la regla inclusiva común.
+El modo **baricéntrico** calcula tres funciones de arista para cada centro de píxel del bounding box. El modo **scanline** calcula las intersecciones de cada fila horizontal y rellena entre la izquierda y la derecha. Wireframe conserva el trazado de las aristas con Bresenham.
 
-## Imágenes por modo
+## Comparativa de resultados
 
-Generadas con yaw `0.6`, pitch `0.3` y zoom `1.0` mediante `--export-modes`:
+Las imágenes se generan con:
 
-![Wireframe](images/mode_wireframe.png)
+```bash
+cargo run --release -- --export-modes
+```
 
-![Baricéntrico](images/mode_barycentric.png)
+La exportación utiliza yaw `0.6`, pitch `0.3`, zoom `1.0` y el color naranja pálido del renderer.
 
-![Scanline](images/mode_scanline.png)
+| Modo | Resultado |
+| :---: | :---: |
+| Wireframe | ![Wireframe](images/mode_wireframe.png) |
+| Baricéntrico | ![Baricéntrico](images/mode_barycentric.png) |
+| Scanline | ![Scanline](images/mode_scanline.png) |
+| Diferencias | ![Diferencias](images/mode_diff.png) |
 
-![Diferencias](images/mode_diff.png)
-
-La exportación imprimió `Sin diferencias`.
-
-| Modo | Fragmentos |
-|---|---:|
-| Wireframe | 1,262,853 |
-| FilledBarycentric | 1,016,767 |
-| FilledScanline | 1,016,779 |
-
-Los conteos internos difieren, pero la imagen diff no contiene diferencias.
+`mode_diff.png` es una máscara: pinta de rojo solo los píxeles distintos. Por eso aparece con el fondo cuando la salida imprime `Sin diferencias`; no es una imagen adicional del modelo.
 
 ## Pruebas de equivalencia
 
-`cargo test -- --nocapture` cubre triángulos pequeños y grandes, aristas horizontales y verticales, coordenadas `.5`, casos fuera del viewport, degenerados, un conteo conocido y 2000 triángulos pseudoaleatorios generados con un LCG determinista.
+Las pruebas cubren triángulos pequeños y grandes, aristas horizontales y verticales, coordenadas enteras y `.5`, triángulos parcialmente o completamente fuera del framebuffer, degenerados, un conteo conocido y 2000 triángulos pseudoaleatorios generados con un LCG determinista.
 
 Resultado real:
 
@@ -67,13 +133,13 @@ Resultado real:
 Diferencias de borde: 20 de 20
 ```
 
-Todas las diferencias aleatorias fueron píxeles a menos de `1e-3` de una arista.
+Las 20 diferencias encontradas por la prueba aleatoria estuvieron a menos de `1e-3` de una arista.
 
 ## Benchmark
 
-El benchmark mide solamente `rasterize`, excluyendo `set_pixel`, texturas y ventana. Usa una ejecución de calentamiento, 11 mediciones, 20 iteraciones para la nave y 2000 para el conjunto grande.
+El benchmark mide únicamente la generación de fragmentos en `rasterize`. Excluye `set_pixel`, texturas, ventana y esperas. Usa una ejecución de calentamiento, 11 mediciones, 20 iteraciones para la nave y 2000 para el conjunto de triángulos grandes.
 
-CPU real registrada: `11th Gen Intel(R) Core(TM) i7-11800H @ 2.30GHz`. El binario indicó `Release: true`.
+CPU registrada: **11th Gen Intel(R) Core(TM) i7-11800H @ 2.30GHz**. El binario indicó `Release: true`.
 
 | Conjunto | Modo | Fragmentos | Mediana por ejecución | Mín | Máx |
 |---|---|---:|---:|---:|---:|
@@ -82,20 +148,13 @@ CPU real registrada: `11th Gen Intel(R) Core(TM) i7-11800H @ 2.30GHz`. El binari
 | nave | FilledScanline | 1,016,779 | 19,540,252 ns | 18,312,406 ns | 19,868,330 ns |
 | grandes | Wireframe | 10,534 | 76,127 ns | 75,016 ns | 79,658 ns |
 
-La corrida completa de `grandes` no terminó en este entorno por el costo de las 2000 iteraciones solicitadas. No se inventan las filas faltantes.
+La corrida completa del conjunto `grandes` no terminó en este entorno con las 2000 iteraciones solicitadas; por honestidad no se agregan filas no medidas.
+
+En general, baricéntrico paga un costo por cada píxel del bounding box, mientras scanline concentra parte del trabajo en cada fila. Los triángulos delgados o diagonales pueden tener bounding boxes grandes respecto al área cubierta. Ambos algoritmos generan `Fragment` y hacen crecer el `Vec`, lo cual también forma parte del costo observado.
 
 ## Flamegraph
 
-No se ejecutó `perf` ni se inspeccionó un SVG en este entorno.
-
-```text
-TODO(Marcelo): describir qué funciones ocupan más ancho.
-- ¿Predominan los cálculos geométricos?
-- ¿Predomina la creación de Fragment?
-- ¿Predomina el crecimiento del Vec?
-```
-
-En Linux, ejecuta:
+No se ejecutó `perf` ni se inspeccionó un SVG en este entorno. Para generarlos en Linux:
 
 ```bash
 cargo install flamegraph
@@ -104,27 +163,61 @@ cargo flamegraph -o images/flamegraph_barycentric.svg -- --benchmark-triangles b
 cargo flamegraph -o images/flamegraph_scanline.svg -- --benchmark-triangles scanline
 ```
 
-Si `perf` ya tiene permisos suficientes, no hace falta usar `sudo`.
-
-## Estructura
+Si `perf` ya tiene permisos suficientes, no hace falta utilizar `sudo`.
 
 ```text
-src/
-├── main.rs             # Ventana, exportación y pipeline
-├── framebuffer.rs      # Imagen, píxeles y presentación
-├── fragment.rs         # Fragmentos
-├── vertex.rs           # Vértices
-├── shaders.rs          # Vertex shader y fragment shader
-├── primitive.rs        # Ensamblaje de triángulos
-├── rasterizer.rs       # Modos y despacho
-├── triangle.rs         # Wireframe, baricéntrico y scanline
-├── scene.rs            # Matrices y triángulos de escena
-├── benchmark.rs        # Benchmark sin ventana
-├── triangle_tests.rs   # Pruebas de equivalencia
-├── obj.rs              # Parser manual OBJ
-├── render.rs           # Pipeline anterior de exportación
-└── line.rs             # Bresenham y primitivas antiguas
-
-assets/                 # Modelos OBJ
-images/                 # Capturas y comparativas
+TODO(Marcelo): describir qué funciones ocupan más ancho.
+- ¿Predominan los cálculos geométricos?
+- ¿Predomina la creación de Fragment?
+- ¿Predomina el crecimiento del Vec?
 ```
+
+## Estructura del proyecto
+
+```text
+.
+├── .gitignore          # Archivos y directorios ignorados por Git
+├── README.md           # Documentación del proyecto, pipeline y comparativas
+├── Cargo.toml          # Configuración del crate, perfiles y dependencias
+├── Cargo.lock          # Versiones bloqueadas de dependencias
+├── assets/
+│   ├── Nave_X_Y.obj    # Modelo principal de la nave
+│   └── cube.obj        # Modelo 3D básico de prueba
+├── images/
+│   ├── mode_wireframe.png      # Render wireframe
+│   ├── mode_barycentric.png    # Relleno baricéntrico
+│   ├── mode_scanline.png       # Relleno scanline
+│   └── mode_diff.png           # Diferencias entre rellenos
+└── src/
+    ├── main.rs         # Punto de entrada, ventana y pipeline
+    ├── framebuffer.rs  # Búfer de píxeles, set_pixel y exportación
+    ├── fragment.rs     # Estructura Fragment
+    ├── vertex.rs       # Estructura Vertex
+    ├── shaders.rs      # Vertex shader y fragment shader
+    ├── primitive.rs    # Ensamblaje de triángulos
+    ├── rasterizer.rs   # Modos y despacho de rasterización
+    ├── triangle.rs     # Wireframe, baricéntrico y scanline
+    ├── scene.rs        # Matrices y construcción de triángulos
+    ├── benchmark.rs    # Benchmark sin ventana
+    ├── triangle_tests.rs # Pruebas de equivalencia
+    ├── obj.rs          # Parser manual de OBJ
+    ├── render.rs       # Pipeline anterior de exportación
+    └── line.rs         # Algoritmo de líneas de Bresenham
+```
+
+## Limitaciones actuales
+
+- No hay z-buffer ni eliminación de caras ocultas.
+- La proyección es ortográfica; todavía no hay perspectiva ni división por `w`.
+- El color y la profundidad de los fragmentos rellenos son uniformes en esta etapa.
+- El análisis detallado del flamegraph queda pendiente hasta inspeccionar los SVG generados con `perf`.
+
+## Dependencias principales
+
+- [`raylib`](https://crates.io/crates/raylib) — Tipos geométricos, `Image`, ventana y carga de texturas para presentar el framebuffer. No se usa para cargar ni dibujar modelos 3D.
+
+## Autor
+
+**Marcelo Detlefsen** - Carné 24554  
+*Universidad del Valle de Guatemala*  
+*Gráficas por Computadora - Laboratorio 5*
