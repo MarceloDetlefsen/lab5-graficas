@@ -1,4 +1,5 @@
 mod framebuffer;
+mod fragment;
 mod line;
 mod obj;
 mod render;
