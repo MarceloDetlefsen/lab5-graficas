@@ -3,6 +3,7 @@ mod fragment;
 mod line;
 mod obj;
 mod render;
+mod shaders;
 mod triangle;
 mod vertex;
 
@@ -15,6 +16,7 @@ use framebuffer::Framebuffer;
 use obj::load_obj;
 use raylib::prelude::*;
 use render::{fit_to_screen, render_obj, to_screen};
+use shaders::vertex_shader;
 
 pub struct Uniforms {
     pub model_matrix: Matrix,
@@ -22,15 +24,13 @@ pub struct Uniforms {
 
 pub fn render(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertex_array: &[vertex::Vertex]) {
     // 1. Procesamiento de vértices.
-    let mut processed = Vec::with_capacity(vertex_array.len());
-    for vertex in vertex_array {
-        let mut vertex = vertex::Vertex::new_with_color(vertex.position, vertex.color);
-        vertex.transformed_position = vertex.position.transform(uniforms.model_matrix);
-        processed.push(vertex);
-    }
+    let transformed_vertices: Vec<vertex::Vertex> = vertex_array
+        .iter()
+        .map(|vertex| vertex_shader(vertex, uniforms))
+        .collect();
 
     // 2. Ensamblaje de primitivas, 3. rasterización y 4. procesamiento de fragmentos.
-    for vertices in processed.chunks_exact(3) {
+    for vertices in transformed_vertices.chunks_exact(3) {
         for fragment in triangle::triangle(&vertices[0], &vertices[1], &vertices[2]) {
             let color = Color::new(
                 (fragment.color.x.clamp(0.0, 1.0) * 255.0) as u8,
@@ -106,7 +106,7 @@ fn show_model_in_window(obj_path: &str) {
                 let screen = to_screen(position, scale, offset);
                 Vector3::new(screen.x, screen.y, position.z)
             },
-            Vector3::new(1.0, 1.0, 1.0),
+            Vector3::new(1.0, 0.51, 0.16),
         )
     }).collect();
     render(&mut framebuffer, &uniforms, &vertex_array);
