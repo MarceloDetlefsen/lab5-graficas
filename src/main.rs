@@ -3,6 +3,7 @@ mod fragment;
 mod line;
 mod obj;
 mod primitive;
+mod rasterizer;
 mod render;
 mod shaders;
 mod triangle;
@@ -18,6 +19,7 @@ use obj::load_obj;
 use raylib::prelude::*;
 use render::{fit_to_screen, render_obj, to_screen};
 use primitive::primitive_assembly;
+use rasterizer::rasterize;
 use shaders::vertex_shader;
 
 pub struct Uniforms {
@@ -34,17 +36,18 @@ pub fn render(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertex_array: 
     // 2. Ensamblaje de primitivas.
     let triangles = primitive_assembly(&transformed_vertices);
 
-    // 3. Rasterización y 4. procesamiento de fragmentos.
-    for tri in &triangles {
-        for fragment in triangle::triangle(&tri[0], &tri[1], &tri[2]) {
-            let color = Color::new(
-                (fragment.color.x.clamp(0.0, 1.0) * 255.0) as u8,
-                (fragment.color.y.clamp(0.0, 1.0) * 255.0) as u8,
-                (fragment.color.z.clamp(0.0, 1.0) * 255.0) as u8,
-                255,
-            );
-            framebuffer.set_pixel(fragment.position.x as i32, fragment.position.y as i32, color);
-        }
+    // 3. Rasterización.
+    let fragments = rasterize(&triangles);
+
+    // 4. Procesamiento de fragmentos.
+    for fragment in fragments {
+        let color = Color::new(
+            (fragment.color.x.clamp(0.0, 1.0) * 255.0) as u8,
+            (fragment.color.y.clamp(0.0, 1.0) * 255.0) as u8,
+            (fragment.color.z.clamp(0.0, 1.0) * 255.0) as u8,
+            255,
+        );
+        framebuffer.set_pixel(fragment.position.x as i32, fragment.position.y as i32, color);
     }
 }
 
