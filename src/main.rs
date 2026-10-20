@@ -123,6 +123,9 @@ fn show_model_in_window(obj_path: &str) {
     let mut zoom = 1.0_f32;
     let mut auto_yaw = false;
     let mut auto_pitch = false;
+    let vertex_array: Vec<vertex::Vertex> = obj.indices.iter().map(|&index| {
+        vertex::Vertex::new_with_color(obj.vertices[index], Vector3::new(1.0, 0.72, 0.4))
+    }).collect();
     while !window.window_should_close() {
         if window.is_key_pressed(KeyboardKey::KEY_W) {
             mode = TriangleMode::Wireframe;
@@ -175,9 +178,7 @@ fn show_model_in_window(obj_path: &str) {
         let model_matrix = build_model_matrix(&obj, scale, yaw, pitch, zoom);
         let uniforms = Uniforms { model_matrix };
         framebuffer.clear();
-        let triangles = build_triangles(&obj, &uniforms);
-        let vertex_array: Vec<vertex::Vertex> = triangles.iter().flat_map(|tri| tri.iter().cloned()).collect();
-        render(&mut framebuffer, &Uniforms { model_matrix: Matrix::identity() }, &vertex_array, mode);
+        render(&mut framebuffer, &uniforms, &vertex_array, mode);
         framebuffer.draw_in_window(&mut window, &thread);
     }
 }
@@ -187,20 +188,21 @@ fn export_modes(obj_path: &str) {
     let (scale, _) = fit_to_screen(&obj, VIEWPORT_WIDTH as u32, VIEWPORT_HEIGHT as u32, 0.1);
     let uniforms = Uniforms { model_matrix: build_model_matrix(&obj, scale, 0.6, 0.3, 1.0) };
     let triangles = build_triangles(&obj, &uniforms);
-    let identity = Uniforms { model_matrix: Matrix::identity() };
     let modes = [
         (TriangleMode::Wireframe, "images/mode_wireframe.png"),
         (TriangleMode::FilledBarycentric, "images/mode_barycentric.png"),
         (TriangleMode::FilledScanline, "images/mode_scanline.png"),
     ];
-    let vertices: Vec<vertex::Vertex> = triangles.iter().flat_map(|tri| tri.iter().cloned()).collect();
+    let vertices: Vec<vertex::Vertex> = obj.indices.iter().map(|&index| {
+        vertex::Vertex::new_with_color(obj.vertices[index], Vector3::new(1.0, 0.72, 0.4))
+    }).collect();
     let mut images = Vec::new();
     for (mode, filename) in modes {
         let fragments = rasterize(&triangles, mode);
         println!("Modo {:?}: {} fragmentos", mode, fragments.len());
         let mut framebuffer = Framebuffer::new(VIEWPORT_WIDTH as u32, VIEWPORT_HEIGHT as u32, Color::new(15, 18, 28, 255));
         framebuffer.clear();
-        render(&mut framebuffer, &identity, &vertices, mode);
+        render(&mut framebuffer, &uniforms, &vertices, mode);
         framebuffer.render_to_file(filename);
         images.push(framebuffer);
     }
