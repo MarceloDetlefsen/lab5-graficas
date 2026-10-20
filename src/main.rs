@@ -14,6 +14,10 @@ use obj::load_obj;
 use raylib::prelude::*;
 use render::{fit_to_screen, render_obj};
 
+pub struct Uniforms {
+    pub model_matrix: Matrix,
+}
+
 fn render_single_model(obj_path: &str, output_file: &str) {
     let start_load = Instant::now();
     let obj = match load_obj(obj_path) {
@@ -44,11 +48,14 @@ fn render_single_model(obj_path: &str, output_file: &str) {
     let width = 800;
     let height = 600;
     let (scale, offset) = fit_to_screen(&obj, width, height, 0.1);
+    let uniforms = Uniforms {
+        model_matrix: Matrix::identity(),
+    };
 
     let mut framebuffer = Framebuffer::new(width, height, Color::new(15, 18, 28, 255));
     framebuffer.clear();
 
-    render_obj(&mut framebuffer, &obj, scale, offset);
+    render_obj(&mut framebuffer, &uniforms, &obj, scale, offset);
 
     // Asegurar que el directorio de salida exista
     if let Some(parent) = Path::new(output_file).parent() {

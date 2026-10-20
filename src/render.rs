@@ -3,6 +3,7 @@
 use crate::framebuffer::Framebuffer;
 use crate::line::triangle;
 use crate::obj::Obj;
+use crate::Uniforms;
 use raylib::prelude::{Color, Vector2, Vector3};
 
 pub const LINE_COLOR: Color = Color::new(240, 130, 40, 255);
@@ -18,13 +19,19 @@ pub fn to_screen(v: Vector3, scale: f32, offset: Vector2) -> Vector2 {
 }
 
 /// Renderiza en wireframe todos los triángulos de un objeto OBJ proyectados a 2D.
-pub fn render_obj(framebuffer: &mut Framebuffer, obj: &Obj, scale: f32, offset: Vector2) {
+pub fn render_obj(
+    framebuffer: &mut Framebuffer,
+    uniforms: &Uniforms,
+    obj: &Obj,
+    scale: f32,
+    offset: Vector2,
+) {
     framebuffer.set_current_color(LINE_COLOR);
 
     for chunk in obj.indices.chunks_exact(3) {
-        let v0 = obj.vertices[chunk[0]];
-        let v1 = obj.vertices[chunk[1]];
-        let v2 = obj.vertices[chunk[2]];
+        let v0 = obj.vertices[chunk[0]].transform(uniforms.model_matrix);
+        let v1 = obj.vertices[chunk[1]].transform(uniforms.model_matrix);
+        let v2 = obj.vertices[chunk[2]].transform(uniforms.model_matrix);
 
         let p0 = to_screen(v0, scale, offset);
         let p1 = to_screen(v1, scale, offset);
