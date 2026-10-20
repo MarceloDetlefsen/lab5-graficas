@@ -31,9 +31,60 @@ pub fn triangle_wireframe(a: &Vertex, b: &Vertex, c: &Vertex) -> Vec<Fragment> {
     fragments
 }
 
-pub fn triangle_scanline(_a: &Vertex, _b: &Vertex, _c: &Vertex) -> Vec<Fragment> {
-    // TODO: Implementar el relleno por scanline.
-    Vec::new()
+/// Rellena usando centros de píxel y bordes inclusivos en y, x y aristas
+/// horizontales. Incluir ambos extremos horizontales evita huecos; conservar
+/// únicamente el intervalo mínimo-máximo evita duplicar píxeles cuando un
+/// vértice pertenece a dos aristas.
+pub fn triangle_scanline(a: &Vertex, b: &Vertex, c: &Vertex) -> Vec<Fragment> {
+    if is_degenerate(a, b, c) {
+        return Vec::new();
+    }
+
+    let points = [
+        (a.transformed_position.x, a.transformed_position.y),
+        (b.transformed_position.x, b.transformed_position.y),
+        (c.transformed_position.x, c.transformed_position.y),
+    ];
+    let y_min = points[0].1.min(points[1].1).min(points[2].1);
+    let y_max = points[0].1.max(points[1].1).max(points[2].1);
+    let start_y = ((y_min - 0.5).ceil() as i32).clamp(0, VIEWPORT_HEIGHT - 1);
+    let end_y = ((y_max - 0.5).floor() as i32).clamp(0, VIEWPORT_HEIGHT - 1);
+    let depth = (a.transformed_position.z + b.transformed_position.z + c.transformed_position.z) / 3.0;
+    let mut fragments = Vec::new();
+
+    for y in start_y..=end_y {
+        let yc = y as f32 + 0.5;
+        let mut crossings = Vec::with_capacity(6);
+
+        for (p0, p1) in [(points[0], points[1]), (points[1], points[2]), (points[2], points[0])] {
+            let (x0, y0) = p0;
+            let (x1, y1) = p1;
+            if y0 == y1 {
+                if yc == y0 {
+                    crossings.push(x0);
+                    crossings.push(x1);
+                }
+            } else if yc >= y0.min(y1) && yc <= y0.max(y1) {
+                crossings.push(x0 + (yc - y0) * (x1 - x0) / (y1 - y0));
+            }
+        }
+
+        if crossings.is_empty() {
+            continue;
+        }
+        let x_left = crossings.iter().copied().fold(f32::INFINITY, f32::min);
+        let x_right = crossings.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let x_start = ((x_left - 0.5).ceil() as i32).clamp(0, VIEWPORT_WIDTH - 1);
+        let x_end = ((x_right - 0.5).floor() as i32).clamp(0, VIEWPORT_WIDTH - 1);
+
+        if x_start <= x_end {
+            for x in x_start..=x_end {
+                fragments.push(Fragment::new(x as f32 + 0.5, yc, a.color, depth));
+            }
+        }
+    }
+
+    fragments
 }
 
 pub fn triangle_barycentric(a: &Vertex, b: &Vertex, c: &Vertex) -> Vec<Fragment> {
