@@ -47,6 +47,9 @@ pub fn triangle_scanline(a: &Vertex, b: &Vertex, c: &Vertex) -> Vec<Fragment> {
     ];
     let y_min = points[0].1.min(points[1].1).min(points[2].1);
     let y_max = points[0].1.max(points[1].1).max(points[2].1);
+    if y_max < 0.5 || y_min > VIEWPORT_HEIGHT as f32 - 0.5 {
+        return Vec::new();
+    }
     let start_y = ((y_min - 0.5).ceil() as i32).clamp(0, VIEWPORT_HEIGHT - 1);
     let end_y = ((y_max - 0.5).floor() as i32).clamp(0, VIEWPORT_HEIGHT - 1);
     let depth = (a.transformed_position.z + b.transformed_position.z + c.transformed_position.z) / 3.0;
@@ -74,6 +77,9 @@ pub fn triangle_scanline(a: &Vertex, b: &Vertex, c: &Vertex) -> Vec<Fragment> {
         }
         let x_left = crossings.iter().copied().fold(f32::INFINITY, f32::min);
         let x_right = crossings.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        if x_right < 0.5 || x_left > VIEWPORT_WIDTH as f32 - 0.5 {
+            continue;
+        }
         let x_start = ((x_left - 0.5).ceil() as i32).clamp(0, VIEWPORT_WIDTH - 1);
         let x_end = ((x_right - 0.5).floor() as i32).clamp(0, VIEWPORT_WIDTH - 1);
 
