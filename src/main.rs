@@ -2,6 +2,7 @@ mod framebuffer;
 mod fragment;
 mod line;
 mod obj;
+mod primitive;
 mod render;
 mod shaders;
 mod triangle;
@@ -16,6 +17,7 @@ use framebuffer::Framebuffer;
 use obj::load_obj;
 use raylib::prelude::*;
 use render::{fit_to_screen, render_obj, to_screen};
+use primitive::primitive_assembly;
 use shaders::vertex_shader;
 
 pub struct Uniforms {
@@ -29,9 +31,12 @@ pub fn render(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertex_array: 
         .map(|vertex| vertex_shader(vertex, uniforms))
         .collect();
 
-    // 2. Ensamblaje de primitivas, 3. rasterización y 4. procesamiento de fragmentos.
-    for vertices in transformed_vertices.chunks_exact(3) {
-        for fragment in triangle::triangle(&vertices[0], &vertices[1], &vertices[2]) {
+    // 2. Ensamblaje de primitivas.
+    let triangles = primitive_assembly(&transformed_vertices);
+
+    // 3. Rasterización y 4. procesamiento de fragmentos.
+    for tri in &triangles {
+        for fragment in triangle::triangle(&tri[0], &tri[1], &tri[2]) {
             let color = Color::new(
                 (fragment.color.x.clamp(0.0, 1.0) * 255.0) as u8,
                 (fragment.color.y.clamp(0.0, 1.0) * 255.0) as u8,
