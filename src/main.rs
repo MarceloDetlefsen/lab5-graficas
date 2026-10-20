@@ -8,6 +8,8 @@ mod render;
 mod shaders;
 mod triangle;
 mod vertex;
+#[cfg(test)]
+mod triangle_tests;
 
 use std::env;
 use std::path::Path;
