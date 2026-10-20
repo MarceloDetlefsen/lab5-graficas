@@ -103,7 +103,7 @@ Una regla top-left aplicada de forma distinta puede causar duplicados entre tri�
 
 ### Modos de rasterización
 
-El modo **baricéntrico** calcula tres funciones de arista para cada centro de píxel del bounding box. El modo **scanline** calcula las intersecciones de cada fila horizontal y rellena entre la izquierda y la derecha. Wireframe conserva el trazado de las aristas con Bresenham.
+El modo **baricéntrico** calcula tres funciones de arista para cada centro de píxel del bounding box. El modo **scanline** calcula las intersecciones de cada fila horizontal y rellena entre la izquierda y la derecha. Wireframe reutiliza la implementación de aristas del pipeline anterior, pero en esta etapa genera fragmentos mediante interpolación lineal tipo DDA: usa `ceil(max(|dx|, |dy|))` pasos. Bresenham permanece en `line.rs` como parte del pipeline anterior de exportación.
 
 ## Comparativa de resultados
 
@@ -137,22 +137,38 @@ Diferencias de borde: 20 de 20
 
 Las 20 diferencias encontradas por la prueba aleatoria estuvieron a menos de `1e-3` de una arista.
 
+### Diferencia de fragmentos entre rellenos
+
+El diagnóstico con la nave, usando yaw `0.6`, pitch `0.3` y zoom `1.0`, reportó:
+
+```text
+Triángulos distintos: 12
+Píxeles distintos acumulados: 12
+Distancia máxima a arista: 0.00001526
+Píxeles distintos en framebuffer final: 0
+```
+
+La hipótesis se confirma: scanline interpola la intersección `x` sobre cada arista y el algoritmo baricéntrico evalúa funciones de arista. El redondeo en `f32` puede decidir de manera distinta únicamente para centros casi exactamente sobre una arista. `mode_diff.png` compara el framebuffer final, no la lista de fragmentos; el overdraw de triángulos posteriores oculta esas 12 diferencias.
+
 ## Benchmark
 
-El benchmark mide únicamente la generación de fragmentos en `rasterize`. Excluye `set_pixel`, texturas, ventana y esperas. Usa una ejecución de calentamiento, 11 mediciones, 20 iteraciones para la nave y 2000 para el conjunto de triángulos grandes.
+El benchmark mide únicamente la generación de fragmentos en `rasterize`. Excluye `set_pixel`, texturas, ventana y esperas. Usa una ejecución de calentamiento y 11 mediciones. La nave usa 20 iteraciones, `grandes` usa 100 y `delgados` usa 10 porque sus bounding boxes grandes hacen costosas las iteraciones de relleno.
 
 CPU registrada: **11th Gen Intel(R) Core(TM) i7-11800H @ 2.30GHz**. El binario indicó `Release: true`.
 
 | Conjunto | Modo | Fragmentos | Mediana por ejecución | Mín | Máx |
 |---|---|---:|---:|---:|---:|
-| nave | Wireframe | 1,262,853 | 19,278,434 ns | 17,652,347 ns | 20,413,022 ns |
-| nave | FilledBarycentric | 1,016,767 | 32,972,877 ns | 31,917,810 ns | 34,521,004 ns |
-| nave | FilledScanline | 1,016,779 | 19,540,252 ns | 18,312,406 ns | 19,868,330 ns |
-| grandes | Wireframe | 10,534 | 76,127 ns | 75,016 ns | 79,658 ns |
+| nave | Wireframe | 1,262,853 | 17,387,562 ns | 17,246,511 ns | 18,326,828 ns |
+| nave | FilledBarycentric | 1,016,767 | 31,857,976 ns | 31,195,552 ns | 33,361,858 ns |
+| nave | FilledScanline | 1,016,779 | 18,418,130 ns | 18,053,914 ns | 19,969,482 ns |
+| grandes | Wireframe | 10,534 | 78,089 ns | 76,721 ns | 78,556 ns |
+| grandes | FilledBarycentric | 704,044 | 8,255,970 ns | 6,748,421 ns | 8,839,629 ns |
+| grandes | FilledScanline | 704,044 | 2,249,278 ns | 2,165,593 ns | 2,512,228 ns |
+| delgados | Wireframe | 12,536 | 90,536 ns | 88,096 ns | 95,441 ns |
+| delgados | FilledBarycentric | 11,322 | 3,511,617 ns | 3,487,099 ns | 3,541,437 ns |
+| delgados | FilledScanline | 11,322 | 102,608 ns | 100,344 ns | 108,350 ns |
 
-La corrida completa del conjunto `grandes` no terminó en este entorno con las 2000 iteraciones solicitadas; por honestidad no se agregan filas no medidas.
-
-En general, baricéntrico paga un costo por cada píxel del bounding box, mientras scanline concentra parte del trabajo en cada fila. Los triángulos delgados o diagonales pueden tener bounding boxes grandes respecto al área cubierta. Ambos algoritmos generan `Fragment` y hacen crecer el `Vec`, lo cual también forma parte del costo observado.
+En los tres conjuntos medidos, scanline fue más rápido que baricéntrico: aproximadamente 1.73 veces en la nave, 3.67 veces en `grandes` y 34.23 veces en `delgados`, según las medianas anteriores. El conjunto `delgados` confirma que un bounding box grande respecto al área cubierta penaliza fuertemente al algoritmo baricéntrico; scanline evita visitar la mayoría de esos píxeles y trabaja principalmente por fila. Ambos algoritmos generan `Fragment` y hacen crecer el `Vec`.
 
 ## Flamegraph
 
@@ -172,11 +188,11 @@ Si `perf` ya tiene permisos suficientes, no hace falta utilizar `sudo`.
 
 ![Flamegraph scanline](images/flamegraph_scanline.svg)
 
-En el flamegraph baricéntrico, `triangle_barycentric` representa aproximadamente el **50.04%** de las muestras. También aparecen `rasterize` con **22.81%**, `append_elements<Fragment>` con **22.76%**, `push<Fragment>` con **14.71%** y `write<Fragment>` con **10.52%**. Esto muestra que el cálculo geométrico por píxel es importante, pero también lo son la creación y copia de fragmentos.
+En el flamegraph baricéntrico, `triangle_barycentric` representa aproximadamente el **50.04%** de las muestras. También aparecen `rasterize` con **22.81%**, `append_elements<Fragment>` con **22.76%**, `push<Fragment>` con **14.71%** y `write<Fragment>` con **10.52%**. `asm_exc_page_fault` aparece en ramas asociadas a la reserva y primer acceso de memoria con valores de aproximadamente **18.63%** y **17.74%**; no se suman porque son frames repetidos de stacks distintos. Esto coincide con el costo de tocar páginas nuevas de `Vec` grandes, incluyendo el `with_capacity` por triángulo y el `extend` al vector global.
 
-En scanline, el SVG muestra `push<Fragment>` con **35.66%**, `append_elements<Fragment>` con **29.24%** y `realloc_nonnull` con **0.80%**. El perfil confirma que el crecimiento y almacenamiento del `Vec<Fragment>` ocupan una parte importante del tiempo observado. También se identifica `grow_one<Fragment>`, aunque con porcentajes menores.
+En scanline, el SVG muestra `triangle_scanline` con **65.09%** en su rama principal, `push<Fragment>` con **35.66%**, `append_elements<Fragment>` con **29.24%**, `realloc_nonnull` con **0.80%** y `asm_exc_page_fault` con valores de hasta **1.32%**; no se suman frames repetidos. El perfil confirma que el almacenamiento del `Vec<Fragment>` sigue siendo importante, pero los fallos de página son mucho menores que en baricéntrico.
 
-La lectura debe hacerse con cuidado: los porcentajes del flamegraph son muestras de los stacks y algunas funciones aparecen en varias ramas. Aun así, ambos perfiles respaldan la comparación conceptual: baricéntrico paga trabajo geométrico por píxel del bounding box, mientras scanline reduce parte del cálculo a intersecciones por fila, pero ambos terminan generando y almacenando muchos `Fragment`.
+La lectura debe hacerse con cuidado: los porcentajes del flamegraph son muestras de los stacks y algunas funciones aparecen en varias ramas. Cada triángulo devuelve su propio `Vec<Fragment>` y luego ese vector se copia al vector global mediante `extend`, por lo que existe un costo doble de almacenamiento. No se elimina porque el enunciado exige que las funciones `triangle_*` devuelvan `Vec<Fragment>`. Ambos perfiles respaldan la comparación conceptual: baricéntrico paga trabajo geométrico por píxel del bounding box, mientras scanline reduce parte del cálculo a intersecciones por fila.
 
 ## Estructura del proyecto
 
@@ -218,7 +234,6 @@ La lectura debe hacerse con cuidado: los porcentajes del flamegraph son muestras
 - No hay z-buffer ni eliminación de caras ocultas.
 - La proyección es ortográfica; todavía no hay perspectiva ni división por `w`.
 - El color y la profundidad de los fragmentos rellenos son uniformes en esta etapa.
-- El análisis detallado del flamegraph queda pendiente hasta inspeccionar los SVG generados con `perf`.
 
 ## Dependencias principales
 
